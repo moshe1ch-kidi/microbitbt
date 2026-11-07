@@ -1382,6 +1382,7 @@ defineBlocksT([
 P.forBlock['mb_fx'] = b => {
   P.definitions_['import_random'] = 'import random';
   P.definitions_['%fx'] = `_FXI = None
+_FXR = None
 _FXO = None
 def _fxget():
   i = Image(5, 5)
@@ -1413,29 +1414,30 @@ def _fxpart(i, r):
   return o
 def _fx(e, i, d):
   # an LED effect; it yields the wait between frames, so other scripts keep running
-  global _FXI, _FXO
+  global _FXI, _FXR, _FXO
   now = _fxget()
   if i is None:
     i = now
   elif e in ('rotr', 'rotl', 'mirh', 'mirv', 'shl', 'shr', 'shu', 'shd'):
-    # the same picture again and the screen still shows the last step: go on from there
-    if repr(i) == _FXI and repr(now) == _FXO:
-      i = now
+    # the same picture as last time: go on from the last step, so in a loop it keeps turning/moving
+    if _FXO is not None and (i is _FXI or repr(i) == _FXR):
+      i = _FXO
     else:
-      _FXI = repr(i)
+      _FXI = i
+      _FXR = repr(i)
   if e == 'rotr':
-    display.show(_fxmap(i, lambda x, y: (4 - y, x)))
+    _FXO = _fxmap(i, lambda x, y: (4 - y, x))
   elif e == 'rotl':
-    display.show(_fxmap(i, lambda x, y: (y, 4 - x)))
+    _FXO = _fxmap(i, lambda x, y: (y, 4 - x))
   elif e == 'mirh':
-    display.show(_fxmap(i, lambda x, y: (4 - x, y)))
+    _FXO = _fxmap(i, lambda x, y: (4 - x, y))
   elif e == 'mirv':
-    display.show(_fxmap(i, lambda x, y: (x, 4 - y)))
+    _FXO = _fxmap(i, lambda x, y: (x, 4 - y))
   elif e in ('shl', 'shr', 'shu', 'shd'):
     dx, dy = {'shl': (-1, 0), 'shr': (1, 0), 'shu': (0, -1), 'shd': (0, 1)}[e]
-    display.show(_fxmap(i, lambda x, y: ((x + dx) % 5, (y + dy) % 5)))
+    _FXO = _fxmap(i, lambda x, y: ((x + dx) % 5, (y + dy) % 5))
   if e in ('rotr', 'rotl', 'mirh', 'mirv', 'shl', 'shr', 'shu', 'shd'):
-    _FXO = repr(_fxget())
+    display.show(_FXO)
     # a short pause, so the change can be seen even in a fast loop
     yield d * 2
   elif e == 'spin':
