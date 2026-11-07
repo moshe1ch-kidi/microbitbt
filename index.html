@@ -1381,7 +1381,9 @@ defineBlocksT([
 ]);
 P.forBlock['mb_fx'] = b => {
   P.definitions_['import_random'] = 'import random';
-  P.definitions_['%fx'] = `def _fxget():
+  P.definitions_['%fx'] = `_FXI = None
+_FXO = None
+def _fxget():
   i = Image(5, 5)
   for y in range(5):
     for x in range(5):
@@ -1411,9 +1413,16 @@ def _fxpart(i, r):
   return o
 def _fx(e, i, d):
   # an LED effect; it yields the wait between frames, so other scripts keep running
+  global _FXI, _FXO
   now = _fxget()
   if i is None:
     i = now
+  elif e in ('rotr', 'rotl', 'mirh', 'mirv', 'shl', 'shr', 'shu', 'shd'):
+    # the same picture again and the screen still shows the last step: go on from there
+    if repr(i) == _FXI and repr(now) == _FXO:
+      i = now
+    else:
+      _FXI = repr(i)
   if e == 'rotr':
     display.show(_fxmap(i, lambda x, y: (4 - y, x)))
   elif e == 'rotl':
@@ -1426,6 +1435,7 @@ def _fx(e, i, d):
     dx, dy = {'shl': (-1, 0), 'shr': (1, 0), 'shu': (0, -1), 'shd': (0, 1)}[e]
     display.show(_fxmap(i, lambda x, y: ((x + dx) % 5, (y + dy) % 5)))
   if e in ('rotr', 'rotl', 'mirh', 'mirv', 'shl', 'shr', 'shu', 'shd'):
+    _FXO = repr(_fxget())
     # a short pause, so the change can be seen even in a fast loop
     yield d * 2
   elif e == 'spin':
