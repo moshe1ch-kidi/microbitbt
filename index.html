@@ -3587,6 +3587,90 @@ function fxTrim(code){
   };
 }
 
+/* ---------- a micro:bit V1: an even smaller effects code ----------
+   A V1 has about 10 KB, and getting a program ready (before it runs) needs several times the program's
+   size. So a V1 gets a shorter version of the effects: one small function moves the pixels for all the
+   turn/mirror/move/45° effects (with a few numbers per effect) instead of separate code for each. The
+   pictures shown are the same. */
+const FX_TAIL = "  if e == 'spin':\n    path = [(x, 0) for x in range(5)] + [(4, y) for y in range(1, 5)] + [(x, 4) for x in range(3, -1, -1)] + [(0, y) for y in range(3, 0, -1)]\n    for k in range(len(path) + 3):\n      display.clear()\n      for t in range(3):\n        if 0 <= k - t < len(path):\n          display.set_pixel(path[k - t][0], path[k - t][1], 9 - 3 * t)\n      yield d // 2\n    display.show(now)\n  elif e == 'blink':\n    display.show(i)\n    yield d * 3\n    display.clear()\n    yield d * 3\n    display.show(i)\n    yield d * 3\n  elif e == 'fadein':\n    for b in range(10):\n      display.show(_fxdim(i, b))\n      yield d // 2\n  elif e == 'fadeout':\n    for b in range(9, -1, -1):\n      display.show(_fxdim(i, b))\n      yield d // 2\n  elif e == 'breathe':\n    for b in (9, 7, 5, 3, 2, 3, 5, 7, 9):\n      display.show(_fxdim(i, b))\n      yield d\n  elif e == 'grow':\n    for r in (0, 1, 2):\n      display.show(_fxpart(i, r))\n      yield d * 2\n  elif e == 'shrink':\n    for r in (2, 1, 0):\n      display.show(_fxpart(i, r))\n      yield d * 2\n    display.clear()\n  elif e in ('slider', 'slidel'):\n    old = now\n    for k in range(1, 6):\n      o = _fxbuf()\n      for y in range(5):\n        for x in range(5):\n          if e == 'slider':\n            s = x + k\n            v = old.get_pixel(s, y) if s < 5 else i.get_pixel(s - 5, y)\n          else:\n            s = x - k\n            v = old.get_pixel(s, y) if s >= 0 else i.get_pixel(s + 5, y)\n          o.set_pixel(x, y, v)\n      display.show(o)\n      yield d\n  elif e == 'sparkle':\n    order = [(x, y) for y in range(5) for x in range(5)]\n    for n in range(24, 0, -1):\n      k = random.randint(0, n)\n      order[n], order[k] = order[k], order[n]\n    for x, y in order:\n      display.set_pixel(x, y, 9)\n      yield d // 4\n      display.set_pixel(x, y, i.get_pixel(x, y))";
+const FX_T = {rotr:'(0, 1, 0, -1, 0, 4, 0)', rotl:'(0, -1, 4, 1, 0, 0, 0)', mirh:'(-1, 0, 4, 0, 1, 0, 0)',
+  mirv:'(1, 0, 0, 0, -1, 4, 0)', shl:'(1, 0, 1, 0, 1, 0, 1)', shr:'(1, 0, -1, 0, 1, 0, 1)',
+  shu:'(1, 0, 0, 0, 1, 1, 1)', shd:'(1, 0, 0, 0, 1, -1, 1)'};
+/* only the parts of the effects code this program needs, written for these effects */
+function fxV1Text(code){
+  const used = new Set(), freeUse = /_fx\('\w+', None,/.test(code);
+  for (const m of code.matchAll(/_fx\('(\w+)'/g)) used.add(m[1]);
+  const step = [...used].filter(e => e in FX_T), r45 = used.has('r45r') || used.has('r45l');
+  const other = [...used].some(e => !(e in FX_T) && e !== 'r45r' && e !== 'r45l');
+  const keep = step.length || r45, needNow = freeUse || other;
+  const L = ['_FXK = {}', '_FXB = [Image(5, 5), Image(5, 5)]'];
+  if (needNow) L.push('def _fxget():', '  i = _FXB[1]', '  for y in range(5):', '    for x in range(5):',
+    '      i.set_pixel(x, y, display.get_pixel(x, y))', '  return i');
+  L.push('def _fxbuf():', '  o = _FXB[0]', '  o.fill(0)', '  return o');
+  if (keep) L.push('def _fxt(i, a, b, c, p, q, r, w):', '  o = _fxbuf()', '  for y in range(5):', '    for x in range(5):',
+    '      u = a * x + b * y + c', '      v = p * x + q * y + r', '      if w:', '        u %= 5', '        v %= 5',
+    '      if 0 <= u < 5 and 0 <= v < 5:', '        o.set_pixel(x, y, i.get_pixel(u, v))', '  return o');
+  L.push('def _fx(e, i, d):');
+  if (needNow) L.push('  now = _fxget()');
+  if (other && needNow) L.push('  if e not in (' + [...step, 'r45r', 'r45l'].map(x => "'" + x + "'").join(', ') + '):', '    now = now.copy()');
+  if (freeUse) L.push('  free = i is None', '  if free:', '    i = now');
+  if (keep) {
+    L.push(freeUse ? "  key = 'now' if free else id(i)" : '  key = id(i)');
+    if (freeUse && r45) L.push("  last = _FXK.get('_')", "  _FXK['_'] = key");
+    L.push('  st = _FXK.get(key)', '  if st is None:', '    st = [None, 0, None, None]', '    _FXK[key] = st');
+  }
+  if (r45) L.push("  if e == 'r45r' or e == 'r45l':",
+    freeUse ? "    if st[3] != 'r' or (free and last != 'now'):" : "    if st[3] != 'r':",
+    freeUse ? '      st[2] = i.copy() if free else i' : '      st[2] = i',
+    '      st[1] = 0', "      st[3] = 'r'",
+    "    k = (st[1] + (1 if e == 'r45r' else -1)) % 8", '    st[1] = k',
+    '    c = (1, 1, 0, -1, -1, -1, 0, 1)[k]', '    s = (0, 1, 1, 1, 0, -1, -1, -1)[k]',
+    '    display.show(_fxt(st[2], c, s, 2 - 2 * c - 2 * s, -s, c, 2 + 2 * s - 2 * c, 0))',
+    '    yield d * 2', '    return');
+  if (step.length) {
+    L.push(step.length === 1 ? '  t = ' + FX_T[step[0]] : '  t = {' + step.map(x => "'" + x + "': " + FX_T[x]).join(', ') + '}.get(e)');
+    L.push(step.length === 1 ? "  if e == '" + step[0] + "':" : '  if t is not None:',
+      freeUse ? "    if not free and st[3] == 's':" : "    if st[3] == 's':", '      i = st[0]',
+      '    o = _fxt(i, t[0], t[1], t[2], t[3], t[4], t[5], t[6])');
+    if (freeUse) L.push('    if not free:', '      st[0] = o.copy()', "      st[3] = 's'");
+    else L.push('    st[0] = o.copy()', "    st[3] = 's'");
+    L.push('    display.show(o)', '    yield d * 2', '    return');
+  }
+  if (other) {
+    if (keep) L.push('  st[3] = None');
+    L.push(FX_TAIL);
+  }
+  return L.join('\n');
+}
+function fxV1(code){
+  const lines = code.split('\n');
+  const drop = new Set(['_fxget', '_fxbuf', '_fxkeep', '_fxmap', '_fx']);
+  const out = [];
+  let put = false;
+  for (let i = 0; i < lines.length; ) {
+    const l = lines[i];
+    const c = /^(_FXK|_FXB|_FXS)\s*=/.exec(l);
+    const d = /^def (_\w+)\(/.exec(l);
+    if (c || (d && drop.has(d[1]))) {
+      if (!put) { out.push(fxV1Text(code)); put = true; }
+      let j = i + 1;
+      if (d) while (j < lines.length && (lines[j] === '' || /^[ \t]/.test(lines[j]))) j++;
+      i = j;
+      continue;
+    }
+    out.push(l);
+    i++;
+  }
+  return put ? out.join('\n') : code;
+}
+{
+  const sendBefore = sendChunks;
+  sendChunks = async function(code){
+    if (S.v1 && code.startsWith('from microbit import') && /^def _fx\(/m.test(code)) code = fxV1(code);
+    return sendBefore(code);
+  };
+}
+
 /* ---------- SIMPLEMICROBIT: the helpers are built into this file's Bluetooth MicroPython (module smx) ----------
    When the micro:bit has the same smx as this page (its version matches), a program is sent without the
    helper functions it would otherwise carry (LED effects, clock, scheduler, servo, bars ...): they are imported
