@@ -1057,14 +1057,9 @@ const inScript = b => { const r = b.getRootBlock(); return !!r && HAT_TYPES.incl
   /* The hat block writes the blocks under it itself, inside its own function. */
   P.scrub_ = (b, code, thisOnly) => HAT_TYPES.includes(b.type) ? code : scrub(b, code, thisOnly);
 })();
-P.forBlock['when_start'] = (b, g) => {
-  const hats = b.workspace.getTopBlocks(true).filter(x => x.type === 'when_start' && x.isEnabled());
-  const name = '_script' + (hats.indexOf(b) + 1);
-  const vars = b.workspace.getAllVariables().map(x => g.getVariableName(x.getId()));
-  const next = b.getNextBlock();
-  let body = next ? g.prefixLines(g.blockToCode(next), g.INDENT) : '';
-  body = body.replace(/^([ \t]*)__LOOP__$/gm, '$1yield 0');
-  g.definitions_['%run'] = 'def _run(*scripts):\n' +
+/* the scheduler that runs all scripts and events side by side */
+function RUN_DEF(){
+  return 'def _run(*scripts):\n' +
     '  import gc\n' +
     '  tasks = [[s, 0] for s in scripts]\n' +
     '  alive = len(tasks)\n' +
@@ -1082,6 +1077,15 @@ P.forBlock['when_start'] = (b, g) => {
     '      gc.collect()\n' +
     '      c = ' + SCRIPT_NOW + '\n' +
     '    ' + SCRIPT_NAP + '\n';
+}
+P.forBlock['when_start'] = (b, g) => {
+  const hats = b.workspace.getTopBlocks(true).filter(x => x.type === 'when_start' && x.isEnabled());
+  const name = '_script' + (hats.indexOf(b) + 1);
+  const vars = b.workspace.getAllVariables().map(x => g.getVariableName(x.getId()));
+  const next = b.getNextBlock();
+  let body = next ? g.prefixLines(g.blockToCode(next), g.INDENT) : '';
+  body = body.replace(/^([ \t]*)__LOOP__$/gm, '$1yield 0');
+  g.definitions_['%run'] = RUN_DEF();
   g.definitions_['%' + name] = 'def ' + name + '():\n' +
     (vars.length ? g.INDENT + 'global ' + vars.join(', ') + '\n' : '') +
     body + g.INDENT + 'yield 0\n';
@@ -1838,6 +1842,7 @@ EV_HATS.forEach(type => {
       body +
       g.INDENT + g.INDENT + 'yield 20\n';
     P._scripts.push(name);
+    g.definitions_['%run'] = RUN_DEF();
     return '';
   };
 });
